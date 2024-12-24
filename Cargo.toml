@@ -103,3 +103,6 @@ lto = "thin"
 [profile.release-debug-info]
 inherits = "release"
 debug = true
+
+[build]
+rustflags = ["-C", "target-feature=-crt-static"]

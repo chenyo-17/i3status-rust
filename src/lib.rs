@@ -1,11 +1,12 @@
-#![warn(clippy::match_same_arms)]
-#![warn(clippy::semicolon_if_nothing_returned)]
-#![warn(clippy::unnecessary_wraps)]
-#![allow(clippy::single_match)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(clippy::match_same_arms)] // an inner attribute applies to the whole crate
+#![warn(clippy::semicolon_if_nothing_returned)] // use `rustc -W help` to see all lints
+#![warn(clippy::unnecessary_wraps)] // a lint(er) is a tool that captures potential programming errors
+#![allow(clippy::single_match)] // Clippy comes with `rustup` and can run `cargo clippy` to check lints
+#![cfg_attr(docsrs, feature(doc_cfg))] // `cfg_attr` conditionally applies other attributes based on configuration flags
+                                       // Here it enables `doc_cfg` to document all items when `docsrs` is used
 
-#[macro_use]
-pub mod util;
+#[macro_use] // import macros from below modules into the current scope without explicit import
+pub mod util; // declare the module
 pub mod blocks;
 pub mod click;
 pub mod config;
@@ -21,7 +22,7 @@ pub mod themes;
 pub mod widget;
 mod wrappers;
 
-pub use env_logger;
+pub use env_logger; // re-exports the module so that external code can also use
 pub use serde_json;
 pub use tokio;
 
@@ -47,9 +48,13 @@ use crate::protocol::i3bar_event::{self, I3BarEvent};
 use crate::signals::Signal;
 use crate::widget::{State, Widget};
 
+// `const` is always immutable
 const APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 const REQWEST_TIMEOUT: Duration = Duration::from_secs(10);
 
+// The initialization is only called in the first thread.
+// Any dereferencing will block the thread if another thread is running the initialization
+// Then later threads use the cached value
 static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
@@ -67,10 +72,16 @@ static REQWEST_CLIENT_IPV4: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap()
 });
 
+// A `Future` is an asynchronous value that might not have finished computing yet
+// A `Pin` is a wrapper around some pointer to prevent the value referenced by the pointer
+// from being moved or invalidated unless `Unpin` is implemented
 type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
+// A stream is an asynchronous version of `Iteration<Item = T> `
 type BoxedStream<T> = Pin<Box<dyn Stream<Item = T>>>;
 
+// `mpsc` stands for multiple-producers-single-consumer
+// defines a channel sender with unlimited capacity
 type WidgetUpdatesSender = mpsc::UnboundedSender<(usize, Vec<u64>)>;
 
 /// A feature-rich and resource-friendly replacement for i3status(1), written in Rust. The
@@ -78,7 +89,7 @@ type WidgetUpdatesSender = mpsc::UnboundedSender<(usize, Vec<u64>)>;
 /// battery status, volume, etc.) to standard output in the JSON format understood by i3bar(1) and
 /// sway-bar(5).
 #[derive(Debug, clap::Parser)]
-#[clap(author, about, long_about, version = env!("VERSION"))]
+#[clap(author, about, long_about, version = env!("VERSION"))] // Command Line Argument Parser
 pub struct CliArgs {
     /// Sets a TOML config file
     ///
@@ -107,6 +118,7 @@ pub struct BarState {
 
     blocks: Vec<Block>,
     fullscreen_block: Option<usize>,
+    // A set of futures which may complete in any order
     running_blocks: FuturesUnordered<BoxedFuture<()>>,
 
     widget_updates_sender: WidgetUpdatesSender,
@@ -146,7 +158,7 @@ pub struct Block {
     id: usize,
     name: &'static str,
 
-    update_request: Arc<Notify>,
+    update_request: Arc<Notify>, // A signal to wake up a single task
     action_sender: Option<mpsc::UnboundedSender<BlockAction>>,
 
     click_handler: ClickHandler,
@@ -173,6 +185,8 @@ impl Block {
             BlockState::None => Vec::new(),
             BlockState::Normal { widget } | BlockState::Error { widget } => widget.intervals(),
         };
+        // attempts to send a message to an unbounded channel without blocking
+        // the message queue is stored in a separate heap location
         let _ = tx.send((self.id, intervals));
     }
 

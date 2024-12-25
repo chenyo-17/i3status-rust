@@ -52,10 +52,12 @@
 use chrono::{Timelike, Utc};
 use chrono_tz::Tz;
 
-use super::prelude::*;
+use super::prelude::*; // import `src/blocks/prelude.rs`, which specifies the import list
 
 #[derive(Deserialize, Debug, SmartDefault)]
-#[serde(deny_unknown_fields, default)]
+// `SmartDefault` sets custom default values
+// `Deserialize` allows the struct to be created from formats like JSON, TOML or YAML.
+#[serde(deny_unknown_fields, default)] // fails on unknown fields but allows missing fields with defaults
 pub struct Config {
     pub format: FormatConfig,
     #[default(10.into())]
@@ -64,7 +66,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(untagged)]
+#[serde(untagged)] // deserialize enum by choosing the first variant that matches the pattern.
 pub enum Timezone {
     Timezone(Tz),
     Timezones(Vec<Tz>),
@@ -91,7 +93,7 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
 
     let prev_step_length = timezones.len().saturating_sub(2);
 
-    let mut timezone_iter = timezones.iter().cycle();
+    let mut timezone_iter = timezones.iter().cycle(); // repeat the iterator endless
 
     let mut timezone = timezone_iter.next();
 
@@ -116,18 +118,21 @@ pub async fn run(config: &Config, api: &CommonApi) -> Result<()> {
 
         let phase = now.second() as u64 % interval_seconds;
         if phase != 0 {
-            timer.reset_after(Duration::from_secs(interval_seconds - phase));
+            // whether we are at the start of an interval
+            timer.reset_after(Duration::from_secs(interval_seconds - phase)); // wait for the next interval
         }
 
+        // start and wait on multiple concurren branches,
+        // return when the first branch completes and cancel others
         tokio::select! {
             _ = timer.tick() => (),
             _ = api.wait_for_update_request() => (),
-            Some(action) = actions.recv() => match action.as_ref() {
+            Some(action) = actions.recv() => match action.as_ref() {  // listen for timezone change action
                 "next_timezone" => {
                     timezone = timezone_iter.next();
                 },
                 "prev_timezone" => {
-                    timezone = timezone_iter.nth(prev_step_length);
+                    timezone = timezone_iter.nth(prev_step_length);  // `nth(1)` points to the second item from the current iterator
                 },
                 _ => (),
             }
